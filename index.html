@@ -1,0 +1,887 @@
+<!--
+  ============================================================================
+  Countdown Timer — single-file, offline-first, zero-server-knowledge.
+  ============================================================================
+
+  URL PARAMETER SCHEMA (hash fragment only — never the query string, so a
+  hosting server's access logs never see event details):
+
+    index.html#t=<title>&ts=<epochMs>&u=<units>&z=<zeroBehavior>
+
+    t   string   Event title, URI-component encoded. Optional (defaults to
+                 "Countdown").
+    ts  integer  Target moment as absolute UTC epoch milliseconds. Required.
+                 Encoding as an absolute timestamp (not a local date/time)
+                 means the link resolves to the exact same instant no matter
+                 the viewer's timezone or when they open it.
+    u   string   Which units to render, as any subset of the letters
+                 "dhms" (days, hours, minutes, seconds), in any order —
+                 display order is always days, hours, minutes, seconds
+                 regardless of the order in the URL. Required, must be
+                 non-empty; duplicate letters are rejected.
+    z   string   Zero behavior. "stop" = freeze at 00 and show a completed
+                 state. "up" = past the target, switch to counting elapsed
+                 time upward. Required.
+
+  Example:
+    index.html#t=Launch%20Day&ts=1799000000000&u=dhms&z=up
+
+  If ts/u/z are missing or malformed, the page falls back to BUILDER mode
+  with an inline error message rather than crashing or showing a blank page.
+
+  PRIVACY DESIGN
+  - All state lives in the URL hash fragment, which browsers never transmit
+    in the HTTP request line/headers — so a static host serving this file
+    never logs the event title, date, or any other configured detail.
+  - No localStorage / sessionStorage / cookies / IndexedDB anywhere.
+  - No external network requests of any kind: no CDN scripts, no web fonts,
+    no analytics, no remote images/favicons. System font stack only. Works
+    fully offline and via file://.
+  ============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Defense-in-depth, not behavior-driving: nothing on this page currently
+  makes network requests or outbound navigations, so these two tags are
+  belt-and-suspenders safeguards that stay true even if future edits
+  accidentally introduce a fetch, a stray remote <img>, or a link.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none';">
+<meta name="referrer" content="no-referrer">
+<!-- Inline SVG data-URI favicon (an hourglass emoji drawn as text) so
+     browsers don't auto-request /favicon.ico from the host when this file
+     is served over http(s). Static — no canvas, no per-tick updates. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text x=%2250%22 y=%2275%22 font-size=%2290%22 text-anchor=%22middle%22>%E2%8F%B3</text></svg>">
+<title>Countdown</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f5f7;
+    --fg: #111114;
+    --muted: #5a5a63;
+    --box-bg: #ffffff;
+    --box-border: #dcdce2;
+    --accent: #2b6bff;
+    --accent-elapsed: #d64545;
+    --shadow: rgba(20, 20, 30, 0.08);
+  }
+  :root[data-theme="dark"] {
+    --bg: #101014;
+    --fg: #f2f2f5;
+    --muted: #a3a3ad;
+    --box-bg: #1b1b21;
+    --box-border: #2c2c34;
+    --accent: #6d9bff;
+    --accent-elapsed: #ff7a7a;
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="auto"] {
+      --bg: #101014;
+      --fg: #f2f2f5;
+      --muted: #a3a3ad;
+      --box-bg: #1b1b21;
+      --box-border: #2c2c34;
+      --accent: #6d9bff;
+      --accent-elapsed: #ff7a7a;
+      --shadow: rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: clamp(16px, 4vw, 48px);
+  }
+
+  /* ---------- shared small controls ---------- */
+  .top-bar {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+
+  button.theme-toggle {
+    background: var(--box-bg);
+    border: 1px solid var(--box-border);
+    color: var(--fg);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button.theme-toggle:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  a.copy-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ---------- viewer ---------- */
+  #viewer {
+    width: 100%;
+    max-width: 1100px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  #viewer[hidden] {
+    display: none;
+  }
+
+  .event-title {
+    font-size: clamp(1.1rem, 3vw, 2rem);
+    font-weight: 600;
+    margin: 0 0 clamp(10px, 3vh, 28px);
+    word-break: break-word;
+  }
+
+  .status-line {
+    font-size: clamp(0.85rem, 1.6vw, 1.1rem);
+    color: var(--muted);
+    margin-bottom: clamp(8px, 2vh, 20px);
+    min-height: 1.4em;
+  }
+  .status-line.elapsed { color: var(--accent-elapsed); font-weight: 600; }
+
+  .boxes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(8px, 1.6vw, 22px);
+    width: 100%;
+  }
+
+  .box {
+    background: var(--box-bg);
+    border: 1px solid var(--box-border);
+    border-radius: clamp(10px, 1.4vw, 18px);
+    box-shadow: 0 6px 24px var(--shadow);
+    padding: clamp(10px, 2vw, 22px) clamp(8px, 2.4vw, 28px);
+    min-width: clamp(70px, 18vw, 220px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .box .num {
+    font-size: clamp(2.4rem, 12vw, 9rem);
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .box.ended .num,
+  .box.elapsed .num { color: var(--accent-elapsed); }
+  .box:not(.ended):not(.elapsed) .num { color: var(--fg); }
+
+  .box .unit {
+    margin-top: clamp(4px, 1vh, 10px);
+    font-size: clamp(0.6rem, 1.1vw, 0.85rem);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+
+  .ended-banner {
+    margin-top: clamp(14px, 3vh, 30px);
+    font-size: clamp(1rem, 2.2vw, 1.4rem);
+    font-weight: 700;
+  }
+
+  .new-countdown-link {
+    display: inline-block;
+    margin-top: clamp(24px, 5vh, 48px);
+    color: var(--muted);
+    font-size: 0.9rem;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .new-countdown-link:hover,
+  .new-countdown-link:focus-visible {
+    color: var(--accent);
+  }
+
+  .error-box {
+    max-width: 640px;
+    background: var(--box-bg);
+    border: 1px solid var(--box-border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    color: var(--accent-elapsed);
+    font-size: 0.95rem;
+  }
+
+  /* ---------- builder ---------- */
+  #builder {
+    width: 100%;
+    max-width: 560px;
+  }
+
+  #builder h1 {
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    margin-bottom: 4px;
+  }
+  #builder p.subtitle {
+    color: var(--muted);
+    margin-top: 0;
+    margin-bottom: 24px;
+    font-size: 0.95rem;
+  }
+
+  fieldset {
+    border: 1px solid var(--box-border);
+    border-radius: 12px;
+    padding: 14px 16px 16px;
+    margin: 0 0 16px;
+  }
+  legend {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 6px;
+  }
+
+  label.field-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  input[type="text"],
+  input[type="date"],
+  input[type="time"],
+  select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--box-border);
+    background: var(--box-bg);
+    color: var(--fg);
+    font-size: 1rem;
+    margin-bottom: 14px;
+  }
+
+  .row {
+    display: flex;
+    gap: 12px;
+  }
+  .row > div { flex: 1; }
+
+  .checkbox-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .checkbox-row label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .radio-group label {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .radio-group label span.hint {
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  button.primary {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.05); }
+
+  .result {
+    margin-top: 20px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--box-border);
+    background: var(--box-bg);
+  }
+  .result textarea {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--box-border);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 0.85rem;
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    margin-bottom: 10px;
+  }
+  .copy-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .copy-feedback {
+    margin-left: 10px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .hint-text {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: -8px;
+    margin-bottom: 14px;
+  }
+
+  footer.privacy-note {
+    max-width: 560px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 28px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <button type="button" class="theme-toggle" id="themeToggleBtn" aria-label="Toggle color theme" hidden>
+    <span id="themeToggleIcon" aria-hidden="true">🌓</span>
+    <span id="themeToggleLabel">Auto</span>
+  </button>
+</div>
+
+<main id="viewer" hidden>
+  <h1 class="event-title" id="eventTitle"></h1>
+  <div class="status-line" id="statusLine" aria-live="polite"></div>
+  <div class="boxes" id="boxes" role="group" aria-label="Countdown timer"></div>
+  <div class="ended-banner" id="endedBanner" aria-live="polite" hidden></div>
+  <a class="new-countdown-link" id="newCountdownLink" href="#">Create a new countdown timer</a>
+</main>
+
+<section id="builder">
+  <h1>Countdown Timer</h1>
+  <p class="subtitle">Configure an event, generate a private shareable link. Nothing is sent to any server &mdash; all data lives in the link itself.</p>
+
+  <div id="builderError" class="error-box" hidden></div>
+
+  <form id="builderForm">
+    <label class="field-label" for="titleInput">Event title</label>
+    <input type="text" id="titleInput" placeholder="e.g. Launch Day" maxlength="200">
+
+    <div class="row">
+      <div>
+        <label class="field-label" for="dateInput">Target date</label>
+        <input type="date" id="dateInput" required>
+      </div>
+      <div>
+        <label class="field-label" for="timeInput">Target time</label>
+        <input type="time" id="timeInput" step="1" required>
+      </div>
+    </div>
+    <p class="hint-text">Interpreted in your current local timezone, then stored as an absolute moment in the link.</p>
+
+    <fieldset>
+      <legend>Units to display</legend>
+      <div class="checkbox-row">
+        <label><input type="checkbox" value="d" checked> Days</label>
+        <label><input type="checkbox" value="h" checked> Hours</label>
+        <label><input type="checkbox" value="m" checked> Minutes</label>
+        <label><input type="checkbox" value="s" checked> Seconds</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="radio-group">
+      <legend>At zero</legend>
+      <label>
+        <input type="radio" name="zeroBehavior" value="stop" checked>
+        <span>Stop at zero<span class="hint">Freeze at 00 and show a completed state.</span></span>
+      </label>
+      <label>
+        <input type="radio" name="zeroBehavior" value="up">
+        <span>Count up<span class="hint">Keep going, showing elapsed time since the target.</span></span>
+      </label>
+    </fieldset>
+
+    <button type="submit" class="primary">Generate link</button>
+  </form>
+
+  <div class="result" id="resultBox" hidden>
+    <label class="field-label" for="resultLink">Shareable link</label>
+    <textarea id="resultLink" readonly></textarea>
+    <button type="button" class="copy-btn" id="copyBtn">Copy link</button>
+    <span class="copy-feedback" id="copyFeedback"></span>
+  </div>
+</section>
+
+<footer class="privacy-note">
+  All timer settings are encoded after the <code>#</code> in the URL, which browsers never send to a server.
+  This page makes no network requests and stores nothing on your device.
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // Theme handling
+  // ---------------------------------------------------------------------
+  // Every countdown starts in "auto" (follows the OS via
+  // prefers-color-scheme). The on-page toggle lets a *viewer* cycle
+  // through auto -> light -> dark for their current session only. This is
+  // a deliberate privacy tradeoff: persisting the override would require
+  // localStorage/cookies, which this page intentionally never touches, so
+  // the override always resets to "auto" on reload.
+  var THEME_CYCLE = ["auto", "light", "dark"];
+  var THEME_LABELS = { auto: "Auto", light: "Light", dark: "Dark" };
+  var THEME_ICONS = { auto: "🌓", light: "☀️", dark: "🌙" };
+  var sessionTheme = null; // set to "auto" by initThemeToggle()
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    var btn = document.getElementById("themeToggleBtn");
+    var label = document.getElementById("themeToggleLabel");
+    var icon = document.getElementById("themeToggleIcon");
+    label.textContent = THEME_LABELS[theme] || "Auto";
+    icon.textContent = THEME_ICONS[theme] || "🌓";
+    btn.setAttribute("aria-label", "Color theme: " + (THEME_LABELS[theme] || "Auto") + ". Activate to change.");
+  }
+
+  function initThemeToggle() {
+    sessionTheme = "auto";
+    applyTheme(sessionTheme);
+    var btn = document.getElementById("themeToggleBtn");
+    btn.hidden = false;
+    btn.addEventListener("click", function () {
+      var idx = THEME_CYCLE.indexOf(sessionTheme);
+      sessionTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+      applyTheme(sessionTheme);
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // URL hash parsing / building
+  // ---------------------------------------------------------------------
+  function parseHash() {
+    var raw = window.location.hash.replace(/^#/, "");
+    var params = {};
+    if (!raw) return params;
+    raw.split("&").forEach(function (pair) {
+      if (!pair) return;
+      var eq = pair.indexOf("=");
+      var key = eq === -1 ? pair : pair.slice(0, eq);
+      var val = eq === -1 ? "" : pair.slice(eq + 1);
+      try {
+        params[decodeURIComponent(key)] = decodeURIComponent(val);
+      } catch (e) {
+        params[key] = val;
+      }
+    });
+    return params;
+  }
+
+  function buildHash(fields) {
+    var parts = [];
+    if (fields.t) parts.push("t=" + encodeURIComponent(fields.t));
+    parts.push("ts=" + encodeURIComponent(String(fields.ts)));
+    parts.push("u=" + encodeURIComponent(fields.u));
+    parts.push("z=" + encodeURIComponent(fields.z));
+    return parts.join("&");
+  }
+
+  function validateParams(params) {
+    if (!params.ts || !/^-?\d+$/.test(params.ts)) {
+      return "Missing or invalid target timestamp.";
+    }
+    var ts = parseInt(params.ts, 10);
+    if (!isFinite(ts)) return "Invalid target timestamp.";
+
+    if (!params.u || !/^[dhms]+$/.test(params.u)) {
+      return "Missing or invalid unit selection.";
+    }
+    var seen = {};
+    for (var i = 0; i < params.u.length; i++) {
+      var c = params.u[i];
+      if (seen[c]) return "Duplicate unit in selection.";
+      seen[c] = true;
+    }
+
+    if (params.z !== "stop" && params.z !== "up") {
+      return "Missing or invalid zero-behavior flag.";
+    }
+
+    return null;
+  }
+
+  // ---------------------------------------------------------------------
+  // Viewer mode
+  // ---------------------------------------------------------------------
+  var UNIT_LABELS = { d: "Days", h: "Hours", m: "Minutes", s: "Seconds" };
+  var MS = { d: 86400000, h: 3600000, m: 60000, s: 1000 };
+
+  var tickTimer = null;
+  var isTabFocused = document.hasFocus();
+  var baseTitle = "Countdown";
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  function breakdown(totalMs, units) {
+    var remaining = totalMs;
+    var out = {};
+    var order = ["d", "h", "m", "s"];
+    var unitSet = {};
+    for (var i = 0; i < units.length; i++) unitSet[units[i]] = true;
+
+    order.forEach(function (u) {
+      if (unitSet[u]) {
+        out[u] = Math.floor(remaining / MS[u]);
+        remaining -= out[u] * MS[u];
+      }
+    });
+    return out;
+  }
+
+  function formatTitleTime(totalMs, units) {
+    // Tab-title clock mirrors the creator's chosen units (same breakdown()
+    // used for the on-page boxes), so e.g. a days-only countdown doesn't
+    // suddenly show hours/minutes/seconds in the title. Recomputed from
+    // totalMs (itself derived from Date.now()) on every call rather than
+    // assuming steady 1s ticks, since background tabs get throttled to
+    // roughly one setInterval firing per minute.
+    var order = ["d", "h", "m", "s"];
+    var parts = breakdown(totalMs, units);
+    var present = order.filter(function (u) { return parts.hasOwnProperty(u); });
+    // Drop leading all-zero units so e.g. 0d:0h:42m:12s shows as 42m:12s;
+    // always keep at least the last (smallest) unit even if it's also zero.
+    while (present.length > 1 && parts[present[0]] === 0) present.shift();
+    return present.map(function (u) { return pad2(parts[u]) + u; }).join(":");
+  }
+
+  function renderViewer(params) {
+    document.getElementById("builder").hidden = true;
+    var viewer = document.getElementById("viewer");
+    viewer.hidden = false;
+
+    var title = params.t || "Countdown";
+    baseTitle = title;
+    document.getElementById("eventTitle").textContent = title;
+    document.title = title;
+
+    var targetTs = parseInt(params.ts, 10);
+    // preserve d,h,m,s order regardless of how they appeared in the URL
+    // (validateParams has already guaranteed the letters are valid and
+    // duplicate-free)
+    var order = ["d", "h", "m", "s"];
+    var units = order.filter(function (u) { return params.u.indexOf(u) !== -1; });
+
+    var zeroBehavior = params.z;
+    initThemeToggle();
+
+    // Plain href (no click handler) so this behaves like a normal link:
+    // middle-click / ctrl-click / "open in new tab" all work as expected.
+    document.getElementById("newCountdownLink").href = window.location.href.split("#")[0];
+
+    var boxesEl = document.getElementById("boxes");
+    var statusEl = document.getElementById("statusLine");
+    var endedBanner = document.getElementById("endedBanner");
+
+    // Build box skeletons once.
+    var boxEls = {};
+    units.forEach(function (u) {
+      var box = document.createElement("div");
+      box.className = "box";
+      var num = document.createElement("div");
+      num.className = "num";
+      num.textContent = "00";
+      var label = document.createElement("div");
+      label.className = "unit";
+      label.textContent = UNIT_LABELS[u];
+      box.appendChild(num);
+      box.appendChild(label);
+      boxesEl.appendChild(box);
+      boxEls[u] = { box: box, num: num };
+    });
+
+    // Returns true once the countdown has reached its final, unchanging
+    // state (zero-behavior "stop" past the target) so the tick loop can
+    // shut itself off; "up" mode never finishes.
+    function render() {
+      var now = Date.now();
+      var deltaMs = targetTs - now;
+      var ended = deltaMs <= 0;
+
+      if (!ended) {
+        var parts = breakdown(deltaMs, units);
+        units.forEach(function (u) {
+          boxEls[u].num.textContent = pad2(parts[u]);
+          boxEls[u].box.classList.remove("ended", "elapsed");
+        });
+        if (statusEl.textContent !== "") statusEl.textContent = "";
+        statusEl.classList.remove("elapsed");
+        endedBanner.hidden = true;
+
+        if (!isTabFocused) {
+          document.title = formatTitleTime(deltaMs, units) + " — " + baseTitle;
+        } else {
+          document.title = baseTitle;
+        }
+      } else if (zeroBehavior === "stop") {
+        units.forEach(function (u) {
+          boxEls[u].num.textContent = "00";
+          boxEls[u].box.classList.add("ended");
+          boxEls[u].box.classList.remove("elapsed");
+        });
+        statusEl.textContent = "";
+        statusEl.classList.remove("elapsed");
+        endedBanner.hidden = false;
+        endedBanner.textContent = "✓ " + baseTitle + " has arrived.";
+
+        if (!isTabFocused) {
+          document.title = "Done — " + baseTitle;
+        } else {
+          document.title = baseTitle;
+        }
+      } else {
+        var elapsedMs = now - targetTs;
+        var eparts = breakdown(elapsedMs, units);
+        units.forEach(function (u) {
+          boxEls[u].num.textContent = pad2(eparts[u]);
+          boxEls[u].box.classList.add("elapsed");
+          boxEls[u].box.classList.remove("ended");
+        });
+        // Write only on change: this is an aria-live region, and rewriting
+        // identical text every tick makes some screen readers re-announce it.
+        var statusText = "Elapsed since " + baseTitle;
+        if (statusEl.textContent !== statusText) statusEl.textContent = statusText;
+        statusEl.classList.add("elapsed");
+        endedBanner.hidden = true;
+
+        if (!isTabFocused) {
+          document.title = "+" + formatTitleTime(elapsedMs, units) + " — " + baseTitle;
+        } else {
+          document.title = baseTitle;
+        }
+      }
+
+      return ended && zeroBehavior === "stop";
+    }
+
+    // Recompute from Date.now() on every tick rather than decrementing a
+    // counter, so the display self-corrects across system sleep/wake.
+    // Background tabs get throttled to roughly one setInterval firing per
+    // minute by most browsers; since we always recompute the delta from
+    // the wall clock instead of assuming elapsed ticks, a throttled timer
+    // still shows the correct value whenever it does fire, and the
+    // absolute epoch target keeps everything correct across timezones too.
+    // Once render() reports the final "stop" state, the interval is
+    // cleared — the display can never change again, so ticking on would
+    // just be redundant DOM writes.
+    if (!render()) {
+      tickTimer = window.setInterval(function () {
+        if (render()) {
+          window.clearInterval(tickTimer);
+          tickTimer = null;
+        }
+      }, 1000);
+    }
+
+    window.addEventListener("focus", function () {
+      isTabFocused = true;
+      document.title = baseTitle;
+    });
+    window.addEventListener("blur", function () {
+      isTabFocused = false;
+      render();
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Builder mode
+  // ---------------------------------------------------------------------
+  function initBuilder(errorMessage) {
+    document.getElementById("viewer").hidden = true;
+    document.getElementById("builder").hidden = false;
+    initThemeToggle();
+
+    if (errorMessage) {
+      var errBox = document.getElementById("builderError");
+      errBox.hidden = false;
+      errBox.textContent = errorMessage;
+    }
+
+    // Default the date/time inputs to one hour from now for convenience.
+    var now = new Date(Date.now() + 60 * 60 * 1000);
+    var dateInput = document.getElementById("dateInput");
+    var timeInput = document.getElementById("timeInput");
+    function pad(n) { return String(n).padStart(2, "0"); }
+    dateInput.value = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+    timeInput.value = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":00";
+
+    var form = document.getElementById("builderForm");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      // Clear any earlier error (including one carried over from a bad
+      // link); the failure paths below re-show it as needed.
+      document.getElementById("builderError").hidden = true;
+
+      var titleVal = document.getElementById("titleInput").value.trim();
+      var dateVal = dateInput.value;
+      var timeVal = timeInput.value || "00:00:00";
+
+      if (!dateVal) {
+        showBuilderError("Please choose a target date.");
+        return;
+      }
+
+      // Parse as local time, convert to absolute epoch ms.
+      var isoLocal = dateVal + "T" + (timeVal.length === 5 ? timeVal + ":00" : timeVal);
+      var targetDate = new Date(isoLocal);
+      if (isNaN(targetDate.getTime())) {
+        showBuilderError("That date/time couldn't be parsed. Please check the values.");
+        return;
+      }
+      var ts = targetDate.getTime();
+
+      var unitBoxes = form.querySelectorAll('.checkbox-row input[type="checkbox"]');
+      var units = [];
+      unitBoxes.forEach(function (cb) {
+        if (cb.checked) units.push(cb.value);
+      });
+      if (units.length === 0) {
+        showBuilderError("Select at least one unit to display.");
+        return;
+      }
+      var order = ["d", "h", "m", "s"];
+      units = order.filter(function (u) { return units.indexOf(u) !== -1; });
+
+      var zeroBehavior = form.querySelector('input[name="zeroBehavior"]:checked').value;
+
+      var hash = buildHash({
+        t: titleVal,
+        ts: ts,
+        u: units.join(""),
+        z: zeroBehavior
+      });
+
+      // Build from location.href (not origin+pathname): under file:// URLs,
+      // window.location.origin is the literal string "null" in Chromium,
+      // which would corrupt the generated link.
+      var baseUrl = window.location.href.split("#")[0];
+      var link = baseUrl + "#" + hash;
+      var resultBox = document.getElementById("resultBox");
+      var resultLink = document.getElementById("resultLink");
+      resultBox.hidden = false;
+      resultLink.value = link;
+      resultLink.focus();
+      resultLink.select();
+
+      document.getElementById("copyFeedback").textContent = "";
+    });
+
+    document.getElementById("copyBtn").addEventListener("click", function () {
+      var resultLink = document.getElementById("resultLink");
+      var feedback = document.getElementById("copyFeedback");
+      resultLink.focus();
+      resultLink.select();
+
+      function done(ok) {
+        feedback.textContent = ok ? "Copied!" : "Copy failed — select and copy manually.";
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(resultLink.value).then(
+          function () { done(true); },
+          function () {
+            var ok = document.execCommand && document.execCommand("copy");
+            done(!!ok);
+          }
+        );
+      } else {
+        var ok = document.execCommand && document.execCommand("copy");
+        done(!!ok);
+      }
+    });
+  }
+
+  function showBuilderError(msg) {
+    var errBox = document.getElementById("builderError");
+    errBox.hidden = false;
+    errBox.textContent = msg;
+  }
+
+  // ---------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------
+  function boot() {
+    var hasHash = window.location.hash && window.location.hash.length > 1;
+    if (!hasHash) {
+      initBuilder(null);
+      return;
+    }
+    var params = parseHash();
+    var err = validateParams(params);
+    if (err) {
+      initBuilder("Couldn't load that countdown link (" + err + "). Showing the builder instead so you can create a new one.");
+      return;
+    }
+    renderViewer(params);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
