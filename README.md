@@ -72,7 +72,13 @@ index.html#t=Launch%20Day&ts=1799000000000&u=dhms&z=up
   `'self'`/`data:` images) makes "no network egress" a browser-enforced rule
   rather than just "the code doesn't currently call fetch." If a future edit ever
   introduced a remote request by accident, the browser blocks it outright
-  instead of silently sending it.
+  instead of silently sending it. The same policy (plus `frame-ancestors
+  'none'`, which a `<meta>` tag can't express) is *additionally* sent as a real
+  HTTP header via the [`_headers`](_headers) file when the app is served by a
+  host that supports it (Cloudflare Pages, Netlify). The meta tags remain the
+  single source of truth for the `file://` case; the header is defense-in-depth
+  for the hosted case and closes clickjacking (iframe embedding), which meta
+  CSP cannot.
 - **`Referrer-Policy: no-referrer`.** The URL fragment is never sent in a
   `Referer` header regardless (that's stripped by browsers per spec), but
   this meta tag additionally suppresses the scheme+host+path from being
