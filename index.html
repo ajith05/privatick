@@ -146,6 +146,10 @@
     width: 100%;
     max-width: 1100px;
     flex: 1;
+    /* Keep the countdown filling the first screen now that the FAQ follows
+       it in the flow — flex:1 alone stops reserving space once the page
+       grows past the viewport. */
+    min-height: 80vh;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -384,6 +388,89 @@
     margin-bottom: 14px;
   }
 
+  /* ---------- FAQ ---------- */
+  /* Sits below the fold in both modes: in viewer mode #viewer is flex:1
+     inside a 100vh body, so the countdown always fills the first screen
+     and the FAQ is only reached by scrolling. */
+  #faq {
+    width: 100%;
+    max-width: 640px;
+    margin-top: clamp(40px, 10vh, 88px);
+    padding-top: clamp(24px, 5vh, 40px);
+    border-top: 1px solid var(--box-border);
+  }
+
+  #faq h2 {
+    font-size: 1.15rem;
+    margin: 0 0 4px;
+  }
+  #faq p.faq-intro {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 20px;
+  }
+  #faq h3 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 26px 0 8px;
+  }
+
+  #faq details {
+    border: 1px solid var(--box-border);
+    border-radius: 10px;
+    background: var(--box-bg);
+    margin-bottom: 8px;
+  }
+  #faq summary {
+    padding: 11px 14px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  #faq summary::-webkit-details-marker { display: none; }
+  #faq summary::after {
+    content: "+";
+    color: var(--muted);
+    font-weight: 700;
+    flex: none;
+  }
+  #faq details[open] summary::after { content: "\2212"; }
+  #faq summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+  #faq .faq-body {
+    padding: 0 14px 13px;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+  #faq .faq-body p { margin: 0 0 8px; }
+  #faq .faq-body p:last-child { margin-bottom: 0; }
+  #faq .faq-body ul {
+    margin: 0 0 8px;
+    padding-left: 20px;
+  }
+  #faq .faq-body li { margin-bottom: 5px; }
+  #faq .faq-body strong { color: var(--fg); }
+  #faq .faq-body code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--bg);
+    border: 1px solid var(--box-border);
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+
   footer.privacy-note {
     max-width: 560px;
     text-align: center;
@@ -464,6 +551,167 @@
     <button type="button" class="copy-btn" id="copyBtn">Copy link</button>
     <span class="copy-feedback" id="copyFeedback"></span>
   </div>
+</section>
+
+<section id="faq" aria-labelledby="faqHeading">
+  <h2 id="faqHeading">Frequently Asked Questions</h2>
+  <p class="faq-intro">How this works, what it does with your data, and what it can&rsquo;t protect you from.</p>
+
+  <h3>Getting started</h3>
+
+  <details>
+    <summary>What is this?</summary>
+    <div class="faq-body">
+      <p>A countdown timer where the whole timer lives in the link. You fill out a short form, get a URL, and share it. Anyone who opens it sees a live countdown. No account, no sign-up, no database.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How do I make one?</summary>
+    <div class="faq-body">
+      <p>Open this page with no <code>#</code> in the URL and you get the builder: an event title, a target date and time, which units to show (days/hours/minutes/seconds), and what happens at zero. Hit <strong>Generate link</strong>, then <strong>Copy link</strong>.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>How do I share it?</summary>
+    <div class="faq-body">
+      <p>Paste the copied link anywhere &mdash; chat, email, a calendar invite. Opening the link <em>is</em> the timer; there&rsquo;s nothing to install.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>What happens if I open a broken or half-copied link?</summary>
+    <div class="faq-body">
+      <p>You get the builder back with an inline message explaining what was wrong (bad timestamp, bad units, bad zero-behavior) rather than a blank page or an error. Nothing crashes.</p>
+    </div>
+  </details>
+
+  <h3>Behavior</h3>
+
+  <details>
+    <summary>What are the &ldquo;At zero&rdquo; options?</summary>
+    <div class="faq-body">
+      <ul>
+        <li><strong>Stop at zero</strong> &mdash; freezes at 00 and shows a &ldquo;&#10003; <em>Title</em> has arrived.&rdquo; banner.</li>
+        <li><strong>Count up</strong> &mdash; past the target it keeps going, showing elapsed time in red.</li>
+      </ul>
+    </div>
+  </details>
+
+  <details>
+    <summary>Does the timer work across timezones?</summary>
+    <div class="faq-body">
+      <p>Yes. Your date and time are entered in <em>your</em> local timezone, but the link stores an absolute UTC instant. Everyone who opens it counts down to the exact same moment, whatever their timezone.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Will it drift if I leave the tab open, or if my laptop sleeps?</summary>
+    <div class="faq-body">
+      <p>No. Every tick recomputes from the current wall clock rather than subtracting one second from a counter, so it self-corrects after sleep/wake and after browsers throttle background tabs.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Why does the browser tab title show the time only sometimes?</summary>
+    <div class="faq-body">
+      <p>When the tab is in the background, the tab title shows the running clock (e.g. <code>02d:14h &mdash; Launch Day</code>, or <code>+00m:42s</code> when counting up) so you can watch it from another tab. Focus the tab and the title goes back to just the event name.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Can I edit a countdown after sharing it?</summary>
+    <div class="faq-body">
+      <p>Not in place &mdash; the link <em>is</em> the timer. Make a new one and share the new link. The old link keeps working until people stop using it.</p>
+    </div>
+  </details>
+
+  <h3>Privacy</h3>
+
+  <details>
+    <summary>Does the site know what I&rsquo;m counting down to?</summary>
+    <div class="faq-body">
+      <p>No. Settings go after the <code>#</code> in the URL, and browsers never send that fragment to the server. A host serving this file sees only <code>GET /index.html</code> &mdash; never your title or date.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Does it store anything on my device?</summary>
+    <div class="faq-body">
+      <p>No cookies, no localStorage, no sessionStorage, no IndexedDB.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Does it make any network requests?</summary>
+    <div class="faq-body">
+      <p>None at runtime. No CDN scripts, web fonts, analytics, or remote images &mdash; even the hourglass favicon is inlined. A Content-Security-Policy blocks outbound requests at the browser level, so it&rsquo;s enforced, not just promised.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Is there any tracking or analytics?</summary>
+    <div class="faq-body">
+      <p>No.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Can I use it offline?</summary>
+    <div class="faq-body">
+      <p>Yes. Save this page as a single <code>index.html</code> and open it via <code>file://</code> &mdash; builder and viewer both work with no internet.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>So the link is completely private?</summary>
+    <div class="faq-body">
+      <p>Almost &mdash; three things are outside this page&rsquo;s control and worth knowing:</p>
+      <ul>
+        <li><strong>Browser history.</strong> The full URL, title and all, lands in local history like any URL. If browser sync is on, it syncs to the vendor and your other devices, and it shows up in address-bar autocomplete on shared machines.</li>
+        <li><strong>Clipboard managers.</strong> &ldquo;Copy link&rdquo; writes plain text to the OS clipboard; any clipboard-history tool retains it.</li>
+        <li><strong>Access logs.</strong> If hosted, the host logs that <em>a</em> request happened (IP, time, user agent) &mdash; never what the countdown is about.</li>
+      </ul>
+    </div>
+  </details>
+
+  <details>
+    <summary>Is the link secret or encrypted?</summary>
+    <div class="faq-body">
+      <p>No. It&rsquo;s readable by anyone who has it &mdash; treat it like an unlisted link, not a password-protected one.</p>
+    </div>
+  </details>
+
+  <h3>Appearance</h3>
+
+  <details>
+    <summary>Why doesn&rsquo;t my light/dark choice stick?</summary>
+    <div class="faq-body">
+      <p>The toggle in the top-right cycles auto &rarr; light &rarr; dark for the current session only. Persisting it would require storage, which this page deliberately never uses, so it resets to auto on reload. Auto follows your operating system&rsquo;s setting.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Can I show only days, or only minutes and seconds?</summary>
+    <div class="faq-body">
+      <p>Yes &mdash; pick any combination under &ldquo;Units to display.&rdquo; Whatever you leave out gets rolled into the largest unit shown (turn days off and hours accumulate past 24, and so on). Display order is always days &rarr; hours &rarr; minutes &rarr; seconds regardless of how you check them.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Does it work on phones?</summary>
+    <div class="faq-body">
+      <p>Yes &mdash; the layout scales fluidly and the number boxes wrap on narrow screens.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Can I self-host it?</summary>
+    <div class="faq-body">
+      <p>Yes. It&rsquo;s one self-contained HTML file, MIT-licensed, with no build step. Drop it on any static host. Include the <code>_headers</code> file on Cloudflare Pages or Netlify to also get the CSP, HSTS, and anti-clickjacking headers.</p>
+    </div>
+  </details>
 </section>
 
 <footer class="privacy-note">
