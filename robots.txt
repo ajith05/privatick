@@ -1,0 +1,21 @@
+# Crawling is unrestricted. Countdown configuration lives in the URL hash
+# fragment, which browsers never send to a server and crawlers therefore never
+# receive. The only thing any bot can reach is the empty builder form.
+#
+# The Content-Signal line states how the page's contents may be used once
+# fetched, which is separate from whether fetching is allowed at all:
+#   search   = yes  indexing and short excerpts are welcome
+#   ai-input = no   do not pull this page in to ground generated answers
+#   ai-train = no   do not train or fine-tune models on it
+# These are declarations, not access controls, and honouring them is voluntary.
+# Little is at stake either way here, since the crawlable page holds no user
+# content -- it is a statement of intent that costs nothing to make.
+#
+# Some static hosts inject their own robots.txt when a site does not ship one.
+# This file is meant to take precedence over that; if you fork and deploy this,
+# request /robots.txt on the live site once to confirm your host serves these
+# directives rather than substituting or appending to them.
+
+User-agent: *
+Content-Signal: search=yes, ai-input=no, ai-train=no
+Allow: /
