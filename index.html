@@ -423,9 +423,9 @@
   }
 
   /* ---------- FAQ ---------- */
-  /* Sits below the fold in both modes: in viewer mode #viewer is flex:1
-     inside a 100vh body, so the countdown always fills the first screen
-     and the FAQ is only reached by scrolling. */
+  /* Sits below the fold in both modes: in viewer mode #viewer reserves
+     80vh (see above), so the countdown fills the first screen and the FAQ
+     is only reached by scrolling. */
   #faq {
     width: 100%;
     max-width: 640px;
@@ -882,10 +882,7 @@
   function formatTitleTime(totalMs, units) {
     // Tab-title clock mirrors the creator's chosen units (same breakdown()
     // used for the on-page boxes), so e.g. a days-only countdown doesn't
-    // suddenly show hours/minutes/seconds in the title. Recomputed from
-    // totalMs (itself derived from Date.now()) on every call rather than
-    // assuming steady 1s ticks, since background tabs get throttled to
-    // roughly one setInterval firing per minute.
+    // suddenly show hours/minutes/seconds in the title.
     var order = ["d", "h", "m", "s"];
     var parts = breakdown(totalMs, units);
     var present = order.filter(function (u) { return parts.hasOwnProperty(u); });
@@ -1004,16 +1001,14 @@
       return ended && zeroBehavior === "stop";
     }
 
-    // Recompute from Date.now() on every tick rather than decrementing a
-    // counter, so the display self-corrects across system sleep/wake.
-    // Background tabs get throttled to roughly one setInterval firing per
-    // minute by most browsers; since we always recompute the delta from
-    // the wall clock instead of assuming elapsed ticks, a throttled timer
-    // still shows the correct value whenever it does fire, and the
-    // absolute epoch target keeps everything correct across timezones too.
-    // Once render() reports the final "stop" state, the interval is
-    // cleared — the display can never change again, so ticking on would
-    // just be redundant DOM writes.
+    // render() derives everything from Date.now() and the absolute epoch
+    // target rather than decrementing a counter, so the display is correct
+    // whenever a tick happens to fire — which matters because browsers
+    // throttle background tabs to roughly one setInterval firing per
+    // minute, and because system sleep/wake skips ticks entirely.
+    // Once render() reports the final "stop" state the interval is
+    // cleared: the display can never change again, so further ticks would
+    // only be redundant DOM writes.
     if (!render()) {
       tickTimer = window.setInterval(function () {
         if (render()) {
