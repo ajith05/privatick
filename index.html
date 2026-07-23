@@ -539,6 +539,16 @@
     margin-top: 28px;
     line-height: 1.5;
   }
+
+  /* The one-line gloss on the product name. The two emphasized words spell out
+     "zero" + "tick" so the footer quietly explains the name while still reading
+     as a plain-language summary. Sits a step above the fine print below it. */
+  footer.privacy-note .name-gloss {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--fg);
+    font-size: 0.85rem;
+  }
 </style>
 </head>
 <body>
@@ -627,6 +637,21 @@
     <summary>What is this?</summary>
     <div class="faq-body">
       <p>A countdown timer where the whole timer lives in the link. You fill out a short form, get a URL, and share it. Anyone who opens it sees a live countdown. No account, no sign-up, no database.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Why is it called zerotick?</summary>
+    <div class="faq-body">
+      <p>The <em>tick</em> is the countdown itself &mdash; the seconds ticking down to your moment. The <em>zero</em> is everything the page deliberately does without:</p>
+      <ul>
+        <li><strong>Zero servers.</strong> Nothing runs on a backend; the whole timer <em>is</em> the link.</li>
+        <li><strong>Zero storage.</strong> No cookies, localStorage, or anything else written to your device.</li>
+        <li><strong>Zero network requests.</strong> No scripts, fonts, analytics, or images are fetched at runtime.</li>
+        <li><strong>Zero build step.</strong> One self-contained HTML file &mdash; nothing to compile or install.</li>
+        <li><strong>Zero knowledge on our end.</strong> Settings live after the <code>#</code> in the URL, which browsers never send to a server, so no host ever learns what you&rsquo;re counting down to.</li>
+      </ul>
+      <p>And the countdown, of course, runs down to zero.</p>
     </div>
   </details>
 
@@ -779,6 +804,7 @@
 </section>
 
 <footer class="privacy-note">
+  <span class="name-gloss"><em>Zero</em> data collected. <em>Tick</em> toward your moment, unconnected.</span>
   All timer settings are encoded after the <code>#</code> in the URL, which browsers never send to a server.
   This page makes no network requests and stores nothing on your device.
 </footer>
