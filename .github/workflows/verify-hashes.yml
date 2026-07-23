@@ -11,7 +11,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # Node is preinstalled on the runner and the script has no dependencies,
       # so there is nothing to set up or install.
       - name: Check inline CSP hashes are in sync
