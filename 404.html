@@ -21,8 +21,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Same defence-in-depth posture as index.html, minus script-src: this page
-     has no script, and default-src 'none' already blocks any that appeared. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none';">
+     has no script, and default-src 'none' already blocks any that appeared.
+     style-src is pinned to the SHA-256 hash of this page's single inline <style>
+     block, so no other inline style (including one injected downstream) can run.
+     Editing the <style> block changes its hash: recompute it (SHA-256 over the
+     exact bytes between the tags, base64-encoded) and update it both in this tag
+     and in the _headers file, which sends a CSP for this path too and lists this
+     page's style hash alongside index.html's. This page's hash is its own; it
+     differs from index.html's style block. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-RtyQtqkHIIpHFG27Ng7LycaQCjybGHinOaTXS+orL38='; img-src 'self' data:; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
 <!-- Inline SVG data-URI favicon, as in index.html, so the browser does not
      fall back to requesting /favicon.ico from the host. -->

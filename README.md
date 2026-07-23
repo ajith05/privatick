@@ -68,11 +68,17 @@ index.html#t=Launch%20Day&ts=1799000000000&u=dhms&z=up
   drawn as an inline SVG `data:` URI — a real, visible icon that still
   never triggers a network request.
 - **Content-Security-Policy meta tag.** `default-src 'none'` (plus narrow
-  allowances for the page's own inline `<style>`/`<script>` and
-  `'self'`/`data:` images) makes "no network egress" a browser-enforced rule
+  allowances for `'self'`/`data:` images and the page's own inline
+  `<style>`/`<script>`, each pinned by its exact SHA-256 hash rather than a
+  blanket `'unsafe-inline'`) makes "no network egress" a browser-enforced rule
   rather than just "the code doesn't currently call fetch." If a future edit ever
   introduced a remote request by accident, the browser blocks it outright
-  instead of silently sending it. The same policy (plus `frame-ancestors
+  instead of silently sending it. Pinning the inline code by hash also means
+  only those exact blocks may run: an inline script or style injected downstream
+  — by a proxy, a CDN, or the serving host's own edge — is refused even though it
+  sits inline in the delivered HTML. So the "no third-party code" guarantee holds
+  even against the infrastructure serving the page, not just against code in the
+  file. The same policy (plus `frame-ancestors
   'none'`, which a `<meta>` tag can't express) is *additionally* sent as a real
   HTTP header via the [`_headers`](_headers) file when the app is served by a
   host that supports it (Cloudflare Pages, Netlify). The meta tags remain the
@@ -200,7 +206,9 @@ No cookies, no localStorage, no sessionStorage, no IndexedDB.
 **Does it make any network requests?**
 None at runtime. No CDN scripts, web fonts, analytics, or remote images — even
 the hourglass favicon is inlined. A Content-Security-Policy blocks outbound
-requests at the browser level, so it's enforced, not just promised.
+requests at the browser level, so it's enforced, not just promised. The same
+policy pins the page's own inline code by its hash, so even a script injected
+downstream by a host or proxy is refused rather than run.
 
 **Is there any tracking or analytics?**
 No.

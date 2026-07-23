@@ -1,0 +1,8 @@
+# The inline <style> and <script> blocks in index.html and 404.html are pinned
+# by SHA-256 in their Content-Security-Policy (and mirrored in _headers). Those
+# hashes were computed over LF bytes, so these files must check out with LF
+# endings on every platform regardless of a contributor's core.autocrlf setting.
+# A CRLF checkout would change the bytes and the browser would refuse to run the
+# blocks: an unstyled page and a dead countdown, failing only on fresh clones.
+*.html   text eol=lf
+_headers text eol=lf

@@ -1,7 +1,22 @@
+# These headers apply to every path the host serves, including the 404
+# response, so this one Content-Security-Policy governs both index.html and
+# 404.html. That's why style-src carries two hashes: the first is index.html's
+# inline <style> block, the second is 404.html's (their styles differ). Each
+# page's own meta CSP narrows this further to just its own hash; a page's inline
+# style must satisfy both this header and that meta, so both hashes must be
+# listed here. Editing either page's <style> block means recomputing its hash
+# (SHA-256 over the exact bytes between the tags, base64-encoded) and updating it
+# both here and in that page. The script hash is index.html's only; 404.html has
+# no script.
 /*
-  Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; style-src 'sha256-Lyn+WV7hTrZZM2B1RYHBrNrnsMbOuCMrJkU+N80jsOo=' 'sha256-RtyQtqkHIIpHFG27Ng7LycaQCjybGHinOaTXS+orL38='; script-src 'sha256-SFMU8f4tvEqLnljdj3IW+nNhGH/D/D5azGnJeFhRMfE='; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
+  # Redundant with the CSP's frame-ancestors 'none' on any browser that honours
+  # CSP; kept for older or embedded webviews that honour X-Frame-Options but not
+  # frame-ancestors. Costs one line, so it stays as belt-and-suspenders.
   X-Frame-Options: DENY
-  Permissions-Policy: geolocation=(), camera=(), microphone=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), browsing-topics=(), interest-cohort=(), payment=(), usb=(), serial=()

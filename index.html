@@ -71,12 +71,21 @@
 <meta property="og:description" content="Make a shareable countdown to any moment, encoded entirely in the link. No account, no database, and no server ever learns what you're counting down to.">
 <meta name="twitter:card" content="summary">
 <!--
-  Defense-in-depth, not behavior-driving: nothing on this page currently
-  makes network requests or outbound navigations, so these two tags are
-  belt-and-suspenders safeguards that stay true even if future edits
-  accidentally introduce a fetch, a stray remote <img>, or a link.
+  Content-Security-Policy. default-src 'none' plus the narrow allowances below
+  mean that even if a future edit accidentally introduced a fetch, a stray
+  remote <img>, or an outbound link, the browser would block it rather than
+  silently allow it.
+
+  script-src and style-src are pinned to the SHA-256 hash of this file's single
+  inline <script> and <style> block instead of 'unsafe-inline'. Only those exact
+  blocks are allowed to run, so an inline script injected by a proxy, CDN, or
+  compromised host is refused even though it sits inline in the served HTML.
+  Editing either block changes its hash: recompute it (SHA-256 over the exact
+  bytes between the tags, base64-encoded) and update both this tag and the
+  _headers file, or the browser will refuse to run the block. 404.html carries
+  its own separate style hash.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-Lyn+WV7hTrZZM2B1RYHBrNrnsMbOuCMrJkU+N80jsOo='; script-src 'sha256-SFMU8f4tvEqLnljdj3IW+nNhGH/D/D5azGnJeFhRMfE='; img-src 'self' data:; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
 <!-- Inline SVG data-URI favicon (an hourglass emoji drawn as text) so
      browsers don't auto-request /favicon.ico from the host when this file
@@ -735,7 +744,7 @@
   <details>
     <summary>Does it make any network requests?</summary>
     <div class="faq-body">
-      <p>None at runtime. No CDN scripts, web fonts, analytics, or remote images &mdash; even the hourglass favicon is inlined. A Content-Security-Policy blocks outbound requests at the browser level, so it&rsquo;s enforced, not just promised.</p>
+      <p>None at runtime. No CDN scripts, web fonts, analytics, or remote images &mdash; even the hourglass favicon is inlined. A Content-Security-Policy blocks outbound requests at the browser level, so it&rsquo;s enforced, not just promised. The same policy pins the page&rsquo;s own inline code by its hash, so even a script injected downstream by a host or proxy is refused rather than run.</p>
     </div>
   </details>
 
